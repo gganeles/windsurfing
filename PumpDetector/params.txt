@@ -1,0 +1,11 @@
+accelCutOff: 35
+lowPassCutoff: 0.4
+fs: 201
+kernel_n (sec): 15
+pumpThresh: 1.7
+fine_kernel_n (sec): 5
+finePumpThresh: 0.15
+velocityThresh: 4
+plots: False
+add10sec: False
+addTimestamps: True
