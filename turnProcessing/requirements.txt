@@ -1,0 +1,9 @@
+gpmf
+numpy
+pandas
+matplotlib
+scipy
+ffmpeg-python
+pytz
+geopy
+scikit-learn
