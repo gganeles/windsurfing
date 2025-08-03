@@ -1,0 +1,18 @@
+[submodule "PumpDetector/glfw"]
+	path = PumpDetector/glfw
+	url = https://github.com/glfw/glfw
+[submodule "PumpDetector/gpmf-parser"]
+	path = PumpDetector/gpmf-parser
+	url = https://github.com/gopro/gpmf-parser
+[submodule "PumpDetector/imgui"]
+	path = PumpDetector/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "PumpDetector/implot"]
+	path = PumpDetector/implot
+	url = https://github.com/epezent/implot
+[submodule "PumpDetector/libdspl-2.0"]
+	path = PumpDetector/libdspl-2.0
+	url = https://github.com/epezent/implot
+[submodule "PumpDetector/libtinyfiledialogs"]
+	path = PumpDetector/libtinyfiledialogs
+	url = https://github.com/native-toolkit/libtinyfiledialogs
