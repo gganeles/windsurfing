@@ -3,6 +3,7 @@ import pytz
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import ffmpeg
 from scipy.signal import convolve, butter, filtfilt
 
@@ -61,6 +62,7 @@ def main(params):
     videoNames = list_and_sort_files(get_resource_path("./"))
     add_timestamp = params['addTimestamps'].lower() == "true"
     add_10s = params['add10sec'].lower() == "true"
+
     for x in videoNames:
         output = mainPart(videoNames[x],"pumps"+x+".csv",params)
         if __name__!="__main__":
@@ -87,7 +89,8 @@ def mainPart(filenames,filename,params):
 
     kernel_n_2 = int(params["fine_kernel_n (sec)"])*fs
 
-    plots = params["plots"] == "true"
+
+    plots = params["plots"].lower() == "true"
     
     finePumpThresh = float(params["finePumpThresh"])
 
@@ -115,27 +118,58 @@ def mainPart(filenames,filename,params):
 
 
     print("Camera Name: ",devName, devID)
-
+    #print(gpmf.parse.expand_klv(stream))
     # Parse low level data into more usable format
     gps_data = list(map(gpmf.gps.parse_gps_block, gps_blocks))
 
     accel_data = list(map(lambda x: pythonify_block(x,"ACCL")['data'],accel_blocks))
-  
+
     utcTimes = list(map(lambda x: datetime.fromisoformat(x.value).timestamp(),gpmf.parse.filter_klv(stream,"GPSU")))
 
+    
+    print(len(utcTimes))
+
     index_of_first_accurate_timestamp=0
+
     for i in range(len(utcTimes)-1):
-        if utcTimes[i+1]-utcTimes[1]>1000000:
+        if utcTimes[i+1]-utcTimes[i]>100:
             index_of_first_accurate_timestamp=i+1
-            break
 
-    utcTimes = utcTimes[index_of_first_accurate_timestamp:]
 
-    velocity = list(map(lambda x: x.speed_2d,gps_data))
+
+    print(f"Index of first accurate timestamp: {index_of_first_accurate_timestamp}")
+
+    # Extend utcTimesAccurate at the beginning with data with a slope of 1
+    if index_of_first_accurate_timestamp > 0:
+        utcTimesAccurate = utcTimes[index_of_first_accurate_timestamp:]
+
+        # Generate synthetic times with slope 1, ending just before the first accurate timestamp
+        synthetic_times = np.arange(index_of_first_accurate_timestamp) + utcTimesAccurate[0] - index_of_first_accurate_timestamp
+        utcTimes = np.concatenate((synthetic_times, utcTimesAccurate))
+        index_of_first_accurate_timestamp = 0
+
+    
+    plt.plot(utcTimes)
+    plt.title("GPS Timestamps")
+    plt.show()
+
+
+
+
+
+    def process(x):
+        y=x.speed_2d
+        if type(y)!=np.ndarray:
+            return [y]
+        return y
+    velocity = list(map(process,gps_data))
 
     velocity_concat = np.concatenate(velocity[index_of_first_accurate_timestamp:])
- 
+    
     accel_data_concat = np.concatenate(accel_data[index_of_first_accurate_timestamp:])
+
+
+
 
     accel_n = accel_data_concat.shape[0]
 
@@ -144,11 +178,23 @@ def mainPart(filenames,filename,params):
     for i in range(accel_n):
         abs_accel[i]=((accel_data_concat[i,0]**2+accel_data_concat[i,1]**2+accel_data_concat[i,2]**2)**.5)
 
+
+
     accel_timestamps = np.interp(np.linspace(0,len(utcTimes),accel_n),range(len(utcTimes)),utcTimes)
     velocity_t =np.linspace(0,len(velocity_concat),accel_n)
     velocity_interp = np.interp(velocity_t,range(len(velocity_concat)),velocity_concat)
 
     timevec = np.array(list(map(lambda x: pytz.UTC.localize(datetime.fromtimestamp(x)).astimezone(pytz.timezone("Asia/Jerusalem")).replace(tzinfo=None),accel_timestamps)))
+
+    if plots:
+        plt.plot(timevec,abs_accel)
+        plt.title("Raw Absolute Acceleration Data for "+filenames[0][4:8])
+        plt.xlabel("UTC DateTime")
+        plt.ylabel("Acceleration (m/s^2)")
+        ax = plt.gca()
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(5))
+        #ax.yaxis.set_major_locator(ticker.MaxNLocator(5))
+        plt.show()
 
     # Apply a cutoff filter
 
@@ -160,7 +206,6 @@ def mainPart(filenames,filename,params):
     b, a = butter(4, lowPassCutoff, btype='low', fs=fs)
     lowpassed_accel = filtfilt(b, a, abs_accel_cut)
     lowpassed_accel = lowpassed_accel - np.mean(lowpassed_accel)
-
 
     # light lowpass filter
     # b, a = butter(4, .8, btype='low', fs=fs)
@@ -192,7 +237,7 @@ def mainPart(filenames,filename,params):
         0.1 * np.ones(kernel_n // 3),
         np.ones(kernel_n // 3 + kernel_n % 3)
     ]))
-        
+    
     def plot_normed_convolution(x,kernel,timevec,label):
         output = convolve(x,kernel,mode='same')
         output = output - np.mean(output)
@@ -201,14 +246,13 @@ def mainPart(filenames,filename,params):
         #plt.plot(timevec,output[:output.shape[0]-n+1],label=label)
         #return output[:output.shape[0]-n+1]
         if plots:
-            plt.plot(timevec,output,label=label)
+            plt.plot(timevec,output,label=label, linewidth=1)
         return output
     
     # Convolutions
     if plots:
         plt.figure()
-    
-    
+
     UnHilb_avg_conv = plot_normed_convolution(np.abs(lowpassed_accel), h,timevec, r"First Pass")
     
     #plot_normed_convolution(np.abs(weak_lowpassed_accel),np.array([1]),timevec,"Finer Detail")
@@ -227,37 +271,49 @@ def mainPart(filenames,filename,params):
     
 
     if plots:
-        plt.title(f"Wide Convolution of Acceleration Data for {filenames[0][4:8]}")
+        plt.title(f"Acceleration Data for {filenames[0][4:8]}", fontsize=36)
+        plt.xlabel("UTC DateTime", fontsize=36)
+        plt.ylabel("Acceleration (m/s^2)", fontsize=36)
+        ax = plt.gca()
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(5))
+        #ax.yaxis.set_major_locator(ticker.MaxNLocator(5))
         plt.show()
 
     if plots:
         #plt.plot(timevec, abs_accel_cut)
         #plt.plot(timevec,gps_data_interp,label="gps velocity")
-        plot_normed_convolution(np.abs(lowpassed_accel), h,timevec, r"Acceleration")
+        plot_normed_convolution(np.abs(lowpassed_accel), h,timevec, "15 Second Moving Average")
         plt.plot([timevec[0],timevec[-1]],[pumpThresh,pumpThresh],label="Pump Threshold",linestyle='--')
         
     pumps = extractPumps(UnHilb_avg_conv,pumpThresh)
-    averagedLowpass5 = plot_normed_convolution(np.abs(lowpassed_accel), 1/kernel_n_2*np.ones(kernel_n_2), timevec, "Lowpass 5s Kernel")
+    averagedLowpass5 = plot_normed_convolution(np.abs(lowpassed_accel), 1/kernel_n_2*np.ones(kernel_n_2), timevec, "5 Second Moving Average")
 
     #refinePumps(lowpassed_accel,pumps,velocity_concat,4)
 
 
     oldPumps = copy.deepcopy(pumps)
     pumps = refinePumps2(averagedLowpass5,pumps,finePumpThresh,velocity_interp,velocityThresh)
+    plt.plot([timevec[0],timevec[-1]],[finePumpThresh,finePumpThresh],label="Refined Pump Threshold",linestyle='--')
 
     addPumpMetaData(pumps,timevec,index_of_first_accurate_timestamp)
     if plots and len(pumps):
         #plt.plot(timevec,lowpassed_accel,label="Lowpass Acceleration")
-        plt.plot(timevec,velocity_interp, label="GPS Velocity")
-        plotPumpBounds(pumps,timevec,averagedLowpass5)
-        plotPumpBounds(oldPumps,timevec,UnHilb_avg_conv)
+        #plt.plot(timevec,velocity_interp, label="GPS Velocity")
+        plotPumpBounds(pumps,timevec,averagedLowpass5,"Refined Pump Boundries",color="r")
+        plotPumpBounds(oldPumps,timevec,UnHilb_avg_conv,"Original Pump Boundries",color="orange")
+        plt.title(f"Pump Boundries for {filenames[0][4:8]}", fontsize=36)
+        plt.xlabel("UTC DateTime", fontsize=36)
+        plt.ylabel("Acceleration (m/s^2)", fontsize=36)
+        ax = plt.gca()
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(5))
+        #ax.yaxis.set_major_locator(ticker.MaxNLocator(5))
         plt.legend()
-        from labeledpumps010 import pumps as LabeledPumps
-        for x in LabeledPumps:
-            x_1=datetime.fromisoformat(x["start"])
-            x_2=datetime.fromisoformat(x["end"])
-            plt.axvline(x=x_1, color='r', linestyle='--')
-            plt.axvline(x=x_2, color='r', linestyle='--')
+        # from labeledpumps010 import pumps as LabeledPumps
+        # for x in LabeledPumps:
+        #     x_1=datetime.fromisoformat(x["start"])
+        #     x_2=datetime.fromisoformat(x["end"])
+        #     plt.axvline(x=x_1, color='r', linestyle='--')
+        #     plt.axvline(x=x_2, color='r', linestyle='--')
         plt.show()
 
     if len(pumps)==0:
@@ -268,7 +324,7 @@ def mainPart(filenames,filename,params):
     # Get video duration
     # Create a directory for the video name if it doesn't exist
     video_name = os.path.splitext(os.path.basename(filenames[0]))[0]
-    video_dir = os.path.join(os.getcwd(), video_name[0:2]+video_name[4:])
+    video_dir = os.path.join(os.getcwd(), video_name[0:2]+video_name[4:]+"python")
     if not os.path.exists(video_dir):
         os.makedirs(video_dir)
 
@@ -284,7 +340,7 @@ def mainPart(filenames,filename,params):
 
     return pumps
 
-def refinePumps2(data,pumps,thresh,vel,velThresh=4):
+def refinePumps2(data,pumps,thresh,vel,velThresh=4.0):
     refined = []
     for pump in pumps:
         startInd = pump["startInd"]
@@ -368,6 +424,7 @@ def extractPumps(data,pumpThresh):
 
 def addPumpMetaData(pumps,timevec,firstTimeIndex):
     firstTime=datetime.fromtimestamp(timevec[0].timestamp()-firstTimeIndex)
+
     for i in range(len(pumps)):
         pumps[i]["end_str"]=vidTimeStamp(firstTime,timevec[pumps[i]["endInd"]])
         pumps[i]["end"]=timevec[pumps[i]["endInd"]]
@@ -375,10 +432,13 @@ def addPumpMetaData(pumps,timevec,firstTimeIndex):
         pumps[i]["start_str"]=vidTimeStamp(firstTime,timevec[pumps[i]["startInd"]])
     return pumps
 
-def plotPumpBounds(pumps,timevec,data):
+def plotPumpBounds(pumps,timevec,data,label,color="r"):
+    x_vals = []
+    y_vals = []
     for pump in pumps:
-        plt.scatter(timevec[pump["startInd"]],data[pump["startInd"]])
-        plt.scatter(timevec[pump["endInd"]],data[pump["endInd"]])
+        x_vals.extend([timevec[pump["startInd"]],timevec[pump["endInd"]]])
+        y_vals.extend([data[pump["startInd"]],data[pump["endInd"]]])
+    plt.scatter(x_vals,y_vals,label=label,color=color,zorder=10)
 
 def refinePumps(data,pumpList,velocity,velocityThresh=4):
     removeList=[]
@@ -456,9 +516,7 @@ def create_supercut(video_urls, timestamp_pairs, time_offset=0 , args={}):
             # Get video duration
             # Create a directory for the video name if it doesn't exist
             video_name = os.path.splitext(os.path.basename(video_url))[0]
-            video_dir = os.path.join(os.getcwd(), video_name[0:2]+video_name[4:])
-
-
+            video_dir = os.path.join(os.getcwd(), video_name[0:2]+video_name[4:]+"python")
 
             probe = ffmpeg.probe(video_url)
             duration = float(next(stream for stream in probe["streams"] if stream["codec_type"] == "video")["duration"])

@@ -59,6 +59,7 @@ velocityThresh: 4
 plots: False
 add10sec: False
 addTimestamps: True
+videoQuality: medium
 ```
 
 ### Parameter Meanings
@@ -74,6 +75,16 @@ Edit any of the parameters in the `params.txt` file as desired.
 - **plots**: Set to `True` to show debug plots
 - **add10sec**: Set to `True` to extend clips by 10 seconds before/after
 - **addTimestamps**: Set to `True` to overlay timestamps on output videos
+- **videoQuality**: Video encoding quality level (see Video Quality Options below)
+
+### Video Quality Options
+The `videoQuality` parameter controls the balance between video quality, file size, and processing time:
+
+- **"low"**: Fast processing, smaller files (good for previews)
+- **"medium"**: Balanced quality and speed (recommended for most uses) [DEFAULT]
+- **"high"**: Better quality, slower processing (good for final videos)
+- **"very high"**: Best quality, slowest processing (archive quality)
+- **"copy"**: No re-encoding, fastest but limited editing capability
 
 ## Notes
 - Only GoPro videos with embedded sensor data (GPMF) are supported.

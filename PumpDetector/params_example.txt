@@ -1,0 +1,36 @@
+# GoPro Pump Detection Parameters
+# Signal processing parameters
+accelCutOff: 50.0
+lowPassCutoff: 10.0
+fs: 200
+kernel_n (sec): 3
+pumpThresh: 2.0
+fine_kernel_n (sec): 1
+plots: false
+finePumpThresh: 1.5
+velocityThresh: 2.0
+
+# Video cutting parameters
+addTimestamps: true
+add10sec: true
+createIndividualCuts: true
+createSupercutVideo: true
+
+# Video quality parameters
+videoQuality: medium
+
+# Video quality options:
+# - "low": Fast processing, smaller files (CRF 28, superfast preset)
+#   Good for: Quick processing, preview videos, smaller file sizes
+#
+# - "medium": Balanced quality/speed (CRF 23, fast preset) [DEFAULT]
+#   Good for: Most use cases, reasonable quality and processing time
+#
+# - "high": Better quality, slower processing (CRF 20, medium preset)
+#   Good for: Final videos where quality is important
+#
+# - "very high": Best quality, slowest processing (CRF 18, slow preset)
+#   Good for: Archive quality, maximum visual fidelity
+#
+# - "copy": Stream copy, no re-encoding (fastest but limited editing)
+#   Good for: When no quality changes are needed

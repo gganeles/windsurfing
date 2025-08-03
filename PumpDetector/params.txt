@@ -2,10 +2,13 @@ accelCutOff: 35
 lowPassCutoff: 0.4
 fs: 201
 kernel_n (sec): 15
-pumpThresh: 1.7
+pumpThresh: 1.1365
 fine_kernel_n (sec): 5
+plots: False
 finePumpThresh: 0.15
 velocityThresh: 4
-plots: False
-add10sec: False
 addTimestamps: True
+add10sec: False
+videoQuality: low
+outputDir: C:\Users\gabri\Downloads\2025Projects\Surfing\windsurfing\PumpDetector\
+inputDir: C:\Users\gabri\Downloads\2025Projects\Surfing\windsurfing\PumpDetector\GL010011.LRV

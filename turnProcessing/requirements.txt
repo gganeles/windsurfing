@@ -7,3 +7,5 @@ ffmpeg-python
 pytz
 geopy
 scikit-learn
+pyproj
+plotly
