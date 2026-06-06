@@ -12,7 +12,7 @@
 	url = https://github.com/epezent/implot
 [submodule "PumpDetector/libdspl-2.0"]
 	path = PumpDetector/libdspl-2.0
-	url = https://github.com/epezent/implot
+	url = https://github.com/Dsplib/libdspl-2.0
 [submodule "PumpDetector/libtinyfiledialogs"]
 	path = PumpDetector/libtinyfiledialogs
 	url = https://github.com/native-toolkit/libtinyfiledialogs
