@@ -5,14 +5,20 @@
 
 #include "imgui/imgui.h"
 #include "implot/implot.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
 #include "imgui/imgui_internal.h"
 
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#ifdef _WIN32
+#include <direct.h>
+#define getcwd _getcwd
+#else
+#include <unistd.h>
+#endif
 #include <cctype>
 #include <functional>
 #include <map>
@@ -113,6 +119,91 @@ std::string OpenFolderDialog_stdstring(const std::string& title,
                         CoTaskMemFree(pszPath);
                     }
                     pItem->Release();
+                }
+            }
+
+            pFileDialog->Release();
+        }
+
+        CoUninitialize();
+    }
+
+    return result; // empty if user canceled
+}
+
+/**
+ * Opens a file(s) selection dialog (multi-select).
+ * @param title - The title of the dialog window (UTF-8).
+ * @param initialDir - The initial folder to open to (UTF-8, optional).
+ * @param filters - File filter patterns (e.g. {"*.LRV","*.mp4"}).
+ * @param owner - Optional HWND owner window.
+ * @return Selected files separated by '|', or empty if canceled.
+ */
+std::string OpenFileDialog_stdstring(const std::string& title,
+                                     const std::string& initialDir = "",
+                                     const std::vector<std::string>& filters = {},
+                                     HWND owner = nullptr)
+{
+    std::string result;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+    if (SUCCEEDED(hr)) {
+        IFileOpenDialog* pFileDialog = nullptr;
+        hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_PPV_ARGS(&pFileDialog));
+
+        if (SUCCEEDED(hr)) {
+            DWORD options;
+            pFileDialog->GetOptions(&options);
+            pFileDialog->SetOptions(options | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM);
+
+            // Set title
+            std::wstring titleW = StringToWString(title);
+            pFileDialog->SetTitle(titleW.c_str());
+
+            // Set initial folder
+            if (!initialDir.empty()) {
+                std::wstring initialW = StringToWString(initialDir);
+                IShellItem* folderItem = nullptr;
+                if (SUCCEEDED(SHCreateItemFromParsingName(initialW.c_str(), nullptr, IID_PPV_ARGS(&folderItem)))) {
+                    pFileDialog->SetFolder(folderItem);
+                    folderItem->Release();
+                }
+            }
+
+            // Set file filters
+            if (!filters.empty()) {
+                std::wstring filterPattern;
+                for (size_t i = 0; i < filters.size(); i++) {
+                    filterPattern += StringToWString(filters[i]);
+                    if (i < filters.size() - 1) filterPattern += L";";
+                }
+                COMDLG_FILTERSPEC spec;
+                std::wstring filterName = L"GoPro Videos";
+                spec.pszName = filterName.c_str();
+                spec.pszSpec = filterPattern.c_str();
+                pFileDialog->SetFileTypes(1, &spec);
+            }
+
+            // Show dialog
+            if (SUCCEEDED(pFileDialog->Show(owner))) {
+                IShellItemArray* itemsArray = nullptr;
+                if (SUCCEEDED(pFileDialog->GetResults(&itemsArray))) {
+                    DWORD count = 0;
+                    itemsArray->GetCount(&count);
+                    for (DWORD i = 0; i < count; i++) {
+                        IShellItem* pItem = nullptr;
+                        if (SUCCEEDED(itemsArray->GetItemAt(i, &pItem))) {
+                            PWSTR pszPath = nullptr;
+                            if (SUCCEEDED(pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszPath))) {
+                                if (!result.empty()) result += "|";
+                                result += WStringToString(pszPath);
+                                CoTaskMemFree(pszPath);
+                            }
+                            pItem->Release();
+                        }
+                    }
+                    itemsArray->Release();
                 }
             }
 
@@ -292,15 +383,20 @@ bool export_file_group_thread(AppState *app_state, FileGroup file_group, int gro
 
         // Create output directory for this group
         char output_Directory[256];
+        // Use forward slash on non-Windows, backslash on Windows
+#ifdef _WIN32
         snprintf(output_Directory, sizeof(output_Directory), "%s\\GL%s", app_state->params.output_dir.c_str(), file_group.group_id.c_str());
+#else
+        snprintf(output_Directory, sizeof(output_Directory), "%s/GL%s", app_state->params.output_dir.c_str(), file_group.group_id.c_str());
+#endif
 
         #ifdef _WIN32
-                char mkdir_cmd[128];
+                char mkdir_cmd[512];
                 snprintf(mkdir_cmd, sizeof(mkdir_cmd), "if not exist \"%s\" mkdir \"%s\"",
                         output_Directory, output_Directory);
                 system(mkdir_cmd);
         #else
-                char mkdir_cmd[128];
+                char mkdir_cmd[512];
                 snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s\"", output_Directory);
                 system(mkdir_cmd);
         #endif
@@ -1311,7 +1407,7 @@ void create_individual_cuts(const FileGroup *video_urls, const Pump *pumps, int 
 
                     // Encoding with timestamps using quality-specific parameters
                     snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                             "ffmpeg -y -loglevel quiet -ss %s -i \"%s\" -t %s -avoid_negative_ts make_zero -vf \"drawtext=text='%%{pts\\:localtime\\:%.3f\\:%%Y-%%m-%%d %%H\\\\\\:%%M\\\\\\:%%S}':x=10:y=H-th-10:font=Arial:fontsize=24:fontcolor=white@1.0:box=1:boxcolor=black@0.5:boxborderw=5\" -c:v %s -preset %s -crf %d %s -c:a copy \"%s\"",
+                             "ffmpeg -y -loglevel error -ss %s -i \"%s\" -t %s -avoid_negative_ts make_zero -vf \"drawtext=text='%%{pts\\\\:localtime\\\\:%.3f\\\\:%%Y-%%m-%%d %%H-%%M-%%S}':x=10:y=H-th-10:font=Arial:fontsize=24:fontcolor=white@1.0:box=1:boxcolor=black@0.5:boxborderw=5\" -c:v %s -preset %s -crf %d %s -c:a copy \"%s\"",
                              start_time_str.c_str(), video_urls->filenames[video_index].c_str(), duration_str,
                              pumps[pump_index].start_time, encoding_params.codec.c_str(), encoding_params.preset.c_str(),
                              encoding_params.crf, encoding_params.additional_params.c_str(), output_filename);
@@ -1328,14 +1424,14 @@ void create_individual_cuts(const FileGroup *video_urls, const Pump *pumps, int 
                     if (args.video_quality == "copy" || args.video_quality.empty())
                     {
                         snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                                 "ffmpeg -y -loglevel quiet -ss %s -i \"%s\" -t %s -c copy \"%s\"",
+                                 "ffmpeg -y -loglevel error -ss %s -i \"%s\" -t %s -c copy \"%s\"",
                                  start_time_str.c_str(), video_urls->filenames[video_index].c_str(), duration_str, output_filename);
                     }
                     else
                     {
                         // Re-encode with quality-specific parameters
                         snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                                 "ffmpeg -y -loglevel quiet -ss %s -i \"%s\" -t %s -c:v %s -preset %s -crf %d %s -c:a copy \"%s\"",
+                                 "ffmpeg -y -loglevel error -ss %s -i \"%s\" -t %s -c:v %s -preset %s -crf %d %s -c:a copy \"%s\"",
                                  start_time_str.c_str(), video_urls->filenames[video_index].c_str(), duration_str,
                                  encoding_params.codec.c_str(), encoding_params.preset.c_str(),
                                  encoding_params.crf, encoding_params.additional_params.c_str(), output_filename);
@@ -1400,11 +1496,19 @@ void create_concatenated_supercut(const FileGroup *video_urls, const vector<Pump
         char cut_filename[512];
         std::string output_path = args.output_dir.empty() ? "" : args.output_dir;
         if (!output_path.empty() && output_path.back() != '\\' && output_path.back() != '/') {
+#ifdef _WIN32
             output_path += "\\";
+#else
+            output_path += "/";
+#endif
         }
         
         snprintf(cut_filename, sizeof(cut_filename),
+#ifdef _WIN32
                  "%sGL%s\\pump_%02lld.mp4",
+#else
+                 "%sGL%s/pump_%02lld.mp4",
+#endif
                  output_path.c_str(),
                  video_urls->filenames[0].substr(video_urls->filenames[0].size()-8, 4).c_str(), i + 1);
 
@@ -1425,14 +1529,22 @@ void create_concatenated_supercut(const FileGroup *video_urls, const vector<Pump
     char supercut_filename[256];
     std::string groupid = video_urls->filenames[0].substr(video_urls->filenames[0].size()-8, 4).c_str();
     
-    // Ensure proper path separator for Windows
+    // Add trailing separator if missing (platform-appropriate)
     std::string output_path = args.output_dir.empty() ? "" : args.output_dir;
     if (!output_path.empty() && output_path.back() != '\\' && output_path.back() != '/') {
+#ifdef _WIN32
         output_path += "\\";
+#else
+        output_path += "/";
+#endif
     }
     
     snprintf(supercut_filename, sizeof(supercut_filename),
+#ifdef _WIN32
              "%sGL%s\\supercut_%s.mp4",
+#else
+             "%sGL%s/supercut_%s.mp4",
+#endif
              output_path.c_str(),
              groupid.c_str(), groupid.c_str());
 
@@ -2391,11 +2503,54 @@ void MenuWindow::renderGUI(GLFWwindow *window)
     float button_width = 300.0f;
     ImGui::SetCursorPosX((content_width - button_width) * 0.5f);
 
-    const char *const validPatterns[] = {"*.LRV", "*.mp4"};
-
     if (ImGui::Button("Upload GoPro Videos", ImVec2(button_width, 50.0f)))
     {
-        const char* result = tinyfd_openFileDialog("Select GoPro Videos", app_state->params.input_dir.c_str(), 2, validPatterns, NULL, 1);
+#if defined(_WIN32)
+        // Windows: native IFileOpenDialog (multi-select)
+        std::string result_str = OpenFileDialog_stdstring(
+            "Select GoPro Videos",
+            app_state->params.input_dir,
+            {"*.LRV", "*.mp4"});
+        const char* result = result_str.empty() ? nullptr : result_str.c_str();
+#else
+        // macOS / Linux: use system() with native dialog tool
+        // (popen/tinyfiledialogs has issues on Wayland from GL render thread)
+        std::string default_dir = app_state->params.input_dir;
+        if (default_dir.find('\\') != std::string::npos ||
+            (default_dir.size() >= 2 && std::isalpha(default_dir[0]) && default_dir[1] == ':'))
+        {
+            const char *home = getenv("HOME");
+            default_dir = home ? home : ".";
+        }
+
+#if defined(__APPLE__)
+        std::string cmd = "osascript -e 'set theFiles to (choose file with prompt \"Select GoPro Videos\" of type {\"LRV\",\"mp4\"} with multiple selections allowed)' -e 'set thePaths to \"\"' -e 'repeat with aFile in theFiles' -e 'set thePaths to thePaths & POSIX path of aFile & \"|\"' -e 'end repeat' -e 'return thePaths' 2>/dev/null";
+#else
+        std::string cmd = "zenity --file-selection --multiple --title=\"Select GoPro Videos\" --filename=\"" + default_dir + "\" --file-filter='GoPro Videos | *.LRV *.mp4' --file-filter='All files | *' 2>/dev/null";
+#endif
+
+        std::string tmpfile = std::tmpnam(nullptr);
+        cmd += " > " + tmpfile;
+        int rc = std::system(cmd.c_str());
+        std::string result_str;
+        if (rc == 0)
+        {
+            std::ifstream f(tmpfile);
+            if (f)
+            {
+                std::getline(f, result_str, '\0');
+                f.close();
+            }
+            std::remove(tmpfile.c_str());
+
+            // Zenity outputs one file per line; replace newlines with |
+            for (auto &ch : result_str)
+                if (ch == '\n') ch = '|';
+            if (!result_str.empty() && result_str.back() == '|')
+                result_str.pop_back();
+        }
+        const char* result = result_str.empty() ? nullptr : result_str.c_str();
+#endif
         if (result)
         {
             app_state->filenames = result;
@@ -2661,6 +2816,17 @@ void MenuWindow::renderGUI(GLFWwindow *window)
 // Forward declare the render function
 void render_frame(GLFWwindow *window, AppState &app_state);
 
+// Key callback: Super+Q / Ctrl+Q to close the window
+// Installed before ImGui's backend so ImGui chains to it
+void close_key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+    if (action == GLFW_PRESS && key == GLFW_KEY_Q &&
+        (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL)))
+    {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+}
+
 // Window resize callback that updates viewport
 void window_size_callback(GLFWwindow *window, int width, int height)
 {
@@ -2844,8 +3010,11 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
 
-    // Set the window resize callback
+    // Set the window resize callback and close key callback
+    // close_key_callback must be installed BEFORE ImGui_ImplGlfw_InitForOpenGL
+    // so ImGui saves and chains to it
     glfwSetWindowSizeCallback(window, window_size_callback);
+    glfwSetKeyCallback(window, close_key_callback);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -2862,12 +3031,27 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Load custom font with error checking
-    ImFont *font = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/arial.ttf", 24.0f);
+    // Load custom font with cross-platform fallback chain
+    // AddFontFromFileTTF asserts internally if the file doesn't exist,
+    // so we must verify file existence before calling it.
+    ImFont *font = nullptr;
+
+    auto try_load_font = [&](const char *path, const char *label) -> bool {
+        std::ifstream f(path);
+        if (!f.good())
+            return false;
+        font = io.Fonts->AddFontFromFileTTF(path, 24.0f);
+        if (font)
+            std::cout << "Loaded font: " << label << " (" << path << ")" << std::endl;
+        return font != nullptr;
+    };
+
+    // Try Windows path first, then Linux Liberation Sans (metric-compatible Arial replacement)
+    if (!try_load_font("C:/Windows/Fonts/arial.ttf", "Arial"))
+        try_load_font("/usr/share/fonts/liberation/LiberationSans-Regular.ttf", "Liberation Sans");
+    // If both fail, fall back to ImGui's built-in default font (ProggyClean)
     if (!font)
-    {
-        std::cout << "Warning: Could not load arial.ttf, using default font" << std::endl;
-    }
+        std::cout << "Warning: No external font found, using ImGui built-in default" << std::endl;
 
     // Create shared application state
     AppState app_state = {};

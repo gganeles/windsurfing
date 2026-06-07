@@ -552,7 +552,7 @@ def create_supercut(video_urls, timestamp_pairs, time_offset=0 , args={}):
 
 
                         filter_complex_str = (
-                            f"drawtext=text='%{{pts\\:localtime\\:{start_epoch}\\:%Y-%m-%d %H\\\\\\:%M\\\\\\:%S}}':"
+                            f"drawtext=text='%{{pts\\\\:localtime\\\\:{start_epoch}\\\\:%Y-%m-%d %H-%M-%S}}':"
                             f"x=10:y=H-th-10:font=Arial:fontsize=24:fontcolor=white@1.0:box=1:boxcolor=black@0.5:boxborderw=5"
                         )
 

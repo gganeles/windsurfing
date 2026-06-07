@@ -8,8 +8,16 @@ extern "C" {
 #include "gpmf-parser/GPMF_utils.h"
 #include "gpmf-parser/GPMF_common.h"
 #include "gpmf-parser/demo/GPMF_mp4reader.h"
-#include "libdspl-2.0/include/dspl.h"
 }
+
+// DSPL function declarations (linked from libdspl.so)
+extern "C" {
+    int butter_ap(double rp, int ord, double* b, double* a);
+    int bilinear(double* bs, double* as, int ord, double* bz, double* az);
+    int filter_iir(double* b, double* a, int ord, double* x, int n, double* y);
+    int conv(double* x, int nx, double* h, int nh, double* y);
+}
+#define RES_OK 0
 
 using namespace std;
 

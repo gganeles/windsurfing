@@ -10,5 +10,5 @@ velocityThresh: 4
 addTimestamps: True
 add10sec: False
 videoQuality: low
-outputDir: C:\Users\gabri\Downloads\2025Projects\Surfing\windsurfing\PumpDetector\
-inputDir: C:\Users\gabri\Downloads\2025Projects\Surfing\windsurfing\PumpDetector\GL010011.LRV
+outputDir: /home/gabe/proj/windsurfing/PumpDetector
+inputDir: /home/gabe/Downloads/DT/GL030106.LRV
