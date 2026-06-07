@@ -1108,10 +1108,17 @@ Parameters parse_params(const char *filename)
             else if (key == "outputDir")
             {
                 trimWhitespace(value);
+                #ifdef _WIN32
                 if (value.back() != '\\')
                 {
                     value += '\\'; // Ensure directory ends with '\'
                 }
+                #else
+                if (value.back() != '/')
+                {
+                    value += '/'; // Ensure directory ends with '/'
+                }
+                #endif
                 params.output_dir = value;
             }
             else if (key == "inputDir")

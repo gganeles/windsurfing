@@ -3,12 +3,12 @@ lowPassCutoff: 0.4
 fs: 201
 kernel_n (sec): 15
 pumpThresh: 1.1365
-fine_kernel_n (sec): 5
+fine_kernel_n (sec): 10
 plots: False
-finePumpThresh: 0.15
+finePumpThresh: 0.5
 velocityThresh: 4
 addTimestamps: True
 add10sec: False
-videoQuality: low
+videoQuality: high
 outputDir: /home/gabe/proj/windsurfing/PumpDetector
-inputDir: /home/gabe/Downloads/DT/GL030106.LRV
+inputDir: /home/gabe/Downloads/DT/GL010106.LRV
